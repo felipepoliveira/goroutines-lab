@@ -3,43 +3,71 @@ package main
 import (
 	"fmt"
 	"net/http"
-	"strings"
 	"time"
 )
 
+type MessageProcessorPayload struct {
+	message   string
+	serverUrl string
+}
+
 func main() {
-	apiC := make(chan string, 1)
-	const numWorkers = 70
+	apiC := make(chan MessageProcessorPayload, 1)
+	const numWorkers = 10
 
 	// goroutine that simulates the worker processor
-	go func() {
-		for workerId := 0; workerId < numWorkers; workerId++ {
+	for workerId := 0; workerId < numWorkers; workerId++ {
 
-			// create  worker goroutine
-			go func() {
-				for {
-					msg := <-apiC
-					response, err := http.Post("http://127.0.0.1:8080", "plain/text", strings.NewReader(msg))
-					if err != nil {
-						fmt.Println("Error:", err)
-						return
-					}
-					response.Body.Close()
+		// create  worker goroutine
+		go func() {
+			cntMessagesSent := 0
+			startTime := time.Now()
+			for {
+				msg := <-apiC
+				cntMessagesSent++
+				response, err := http.Get(msg.serverUrl)
+
+				if time.Since(startTime).Seconds() >= 10 {
+					fmt.Printf("Worker %d sent %d msgs in 10 seconds\n", workerId, cntMessagesSent)
+					startTime = time.Now()
+					cntMessagesSent = 0
 				}
-			}()
-		}
-	}()
+
+				if err != nil {
+					fmt.Println("Error:", err)
+					return
+				}
+				response.Body.Close()
+			}
+		}()
+	}
 
 	// simulate sending message
 	i := 0
+	serversUrls := []string{
+		"http://127.0.0.1:8080",
+		"http://127.0.0.1:8081",
+		"http://127.0.0.1:8082",
+		// "http://127.0.0.1:8083",
+		// "http://127.0.0.1:8084",
+		// "http://127.0.0.1:8085",
+		// "http://127.0.0.1:8086",
+		// "http://127.0.0.1:8087",
+		// "http://127.0.0.1:8088",
+		// "http://127.0.0.1:8089",
+	}
 	cntMessagesSent := 0
 	startTime := time.Now()
+	serverIndex := 0
 	for {
-
 		msg := fmt.Sprint("Hello ", i)
-		apiC <- msg
+		apiC <- MessageProcessorPayload{message: msg, serverUrl: serversUrls[serverIndex]}
 		i++
 		cntMessagesSent++
+		serverIndex++
+		if serverIndex >= len(serversUrls) {
+			serverIndex = 0
+		}
 		if time.Since(startTime).Seconds() >= 1 {
 			fmt.Println("Messages sent: ", cntMessagesSent)
 			startTime = time.Now()
